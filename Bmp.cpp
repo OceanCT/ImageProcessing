@@ -89,6 +89,7 @@ private:
     * generate palette
     */
     void generatePalette() {
+        palette.resize(pow(2,infoHeader.imageBitCount));
         for (int i = 0;i < palette.size();i++) { palette[i].setColor(i, i, i); }
     }
 public:
@@ -301,6 +302,7 @@ void homework3() {
         sort(vec.begin(), vec.end());
         return vec[vec.size()/2];
     };
+    bmp1.bmpConverter24To8();
     bmp1.filterStatistic(fn, 3, 3);
     bmp1.writeToFile("./resources/P3/lena1_res.bmp");
 }
