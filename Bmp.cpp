@@ -89,7 +89,7 @@ private:
     * generate palette
     */
     void generatePalette() {
-        palette.resize(pow(2,infoHeader.imageBitCount));
+        palette.resize(pow(2, infoHeader.imageBitCount));
         for (int i = 0;i < palette.size();i++) { palette[i].setColor(i, i, i); }
     }
 public:
@@ -262,6 +262,15 @@ public:
             }
         }
     }
+    void operateThroughOperator(function<uint8_t(function<uint8_t(int, int)>, int, int)> fn) {
+        auto bmp = this->Copy();
+        for (int k = 0;k < infoHeader.imageHeight;k++) {
+            for (int m = 0;m < infoHeader.imageWidth;m++) {
+                auto getDataValue = [&bmp](int x, int y)->int {return bmp.getDataValue(x, y);};
+                setDataValue(k, m, fn(getDataValue, k, m));
+            }
+        }
+    }
 };
 
 void homework1() {
@@ -293,24 +302,68 @@ void homework2() {
     bmp.bmpDrawGreyHist("./resources/P2/dim1_hist.bmp");
 }
 void homework3() {
-    // BMP bmp("./resources/P3/lena.bmp");
-    // auto templat = BMP().generateFilterTemplate(5, 5, vector<int>{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, 25);
-    // bmp.filter(templat);
-    // bmp.writeToFile("./resources/P3/lena_res.bmp");
+    BMP bmp("./resources/P3/lena.bmp");
+    auto templat = BMP().generateFilterTemplate(5, 5, vector<int>{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, 25);
+    bmp.filter(templat);
+    bmp.writeToFile("./resources/P3/lena_res.bmp");
     BMP bmp1("./resources/P3/lena1.bmp");
     auto fn = [](vector<int> vec) {
         sort(vec.begin(), vec.end());
-        return vec[vec.size()/2];
+        return vec[vec.size() / 2];
     };
     bmp1.bmpConverter24To8();
     bmp1.filterStatistic(fn, 3, 3);
     bmp1.writeToFile("./resources/P3/lena1_res.bmp");
 }
 
+void homework4() {
+    // prewitt
+    int threshold = 175;
+    auto prewittOperator = [&threshold](auto getDataValue, int x, int y)->int {
+        int ans1 = 0, ans2 = 0;
+        for (int i = -1;i <= 1;i++) ans1 += getDataValue(x - 1, y + i);
+        for (int i = -1;i <= 1;i++) ans1 += -getDataValue(x + 1, y + i);
+        for (int i = -1;i <= 1;i++) ans2 += -getDataValue(x + i, y - 1);
+        for (int i = -1;i <= 1;i++) ans2 += getDataValue(x + i, y + 1);
+        return max(abs(ans1), abs(ans2)) > threshold ? 255 : 0;
+    };
+    BMP bmp("./resources/P4/lena.bmp");
+    bmp.operateThroughOperator(prewittOperator);
+    bmp.writeToFile("./resources/P4/prewitt.bmp");
+    // sobel
+    auto sobelOperator = [&threshold](auto getDataValue, int x, int y)->int {
+        int ans1 = 0, ans2 = 0;
+        for (int i = -1;i <= 1;i++) ans1 += getDataValue(x - 1, y + i) - getDataValue(x + 1, y + i);
+        ans1 += getDataValue(x - 1, y) - getDataValue(x + 1, y);
+        for (int i = -1;i <= 1;i++) ans2 += getDataValue(x + i, y + 1) - getDataValue(x + i, y - 1);
+        ans2 += getDataValue(x, y + 1) - getDataValue(x, y - 1);
+        return sqrt(ans1 * ans1 + ans2 * ans2) > threshold ? 255 : 0;
+    };
+    BMP bmp1("./resources/P4/lena.bmp");
+    bmp1.operateThroughOperator(sobelOperator);
+    bmp1.writeToFile("./resources/P4/sobel.bmp");
+    // log
+    auto logOperator = [&threshold](auto getDataValue, int x, int y)->int {
+        int ans = 0;
+        for (int i = -2;i <= 2;i++) {
+            for (int j = -2;j <= 2;j++) {
+                int dis = abs(i) + abs(j);
+                if (dis == 2) ans -= getDataValue(i + x, j + y);
+                else if (dis == 1) ans -= 2 * getDataValue(i + x, j + y);
+                else if (dis == 0) ans += 16 * getDataValue(i + x, j + y);
+            }
+        }
+        return abs(ans) > threshold ? 255 : 0;
+    };
+    BMP bmp2("./resources/P4/lena.bmp");
+    bmp2.operateThroughOperator(logOperator);
+    bmp2.writeToFile("./resources/P4/log.bmp");
+}
 
 int main() {
     // homework1();
     // homework2();
-    homework3();
+    // homework3();
+    homework4();
     return 0;
 }
