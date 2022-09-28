@@ -124,6 +124,8 @@ public:
         return bmp;
     }
     int getImageBitCount() { return infoHeader.imageBitCount; }
+    int getImageHeight() { return infoHeader.imageHeight; }
+    int getImageWidth() { return infoHeader.imageWidth; }
     void bmpConverter24To8(function<uint8_t(uint8_t, uint8_t, uint8_t)> fn = [](uint8_t b, uint8_t g, uint8_t r)->uint8_t {return (b * 0.114 + g * 0.299 + r * 0.587);}) {
         // generate palette
         generatePalette();
@@ -271,8 +273,18 @@ public:
             }
         }
     }
-};
+    void bmpChangeSize(double fx, double fy) {
 
+    }
+    void bmpTranslation(int dx, int dy) {
+        BMP bmp = this->Copy();
+        auto getDataValue = [&bmp](int x, int y)->uint8_t {
+            if (x<0 || x>bmp.infoHeader.imageHeight || y<0 || y>bmp.infoHeader.imageWidth) return 0;
+            else return bmp.getDataValue(x, y);
+        };
+        auto translationOperator = [&getDataValue]()->int {};
+    }
+};
 void homework1() {
     // homework1
     BMP bmp("./resources/P1/rgb.bmp");
@@ -315,10 +327,14 @@ void homework3() {
     bmp1.filterStatistic(fn, 3, 3);
     bmp1.writeToFile("./resources/P3/lena1_res.bmp");
 }
-
 void homework4() {
-    // prewitt
     int threshold = 175;
+    /*
+    prewitt:
+        1   1   1   -1  0   1
+        0   0   0   -1  0   1
+        -1  -1  -1  -1  0   1
+    */
     auto prewittOperator = [&threshold](auto getDataValue, int x, int y)->int {
         int ans1 = 0, ans2 = 0;
         for (int i = -1;i <= 1;i++) ans1 += getDataValue(x - 1, y + i);
@@ -330,7 +346,12 @@ void homework4() {
     BMP bmp("./resources/P4/lena.bmp");
     bmp.operateThroughOperator(prewittOperator);
     bmp.writeToFile("./resources/P4/prewitt.bmp");
-    // sobel
+    /*
+    sobel:
+        1   2   1   -1  0   1
+        0   0   0   -2  0   2
+        -1  -2  -1  -1  0   1
+    */
     auto sobelOperator = [&threshold](auto getDataValue, int x, int y)->int {
         int ans1 = 0, ans2 = 0;
         for (int i = -1;i <= 1;i++) ans1 += getDataValue(x - 1, y + i) - getDataValue(x + 1, y + i);
@@ -342,7 +363,13 @@ void homework4() {
     BMP bmp1("./resources/P4/lena.bmp");
     bmp1.operateThroughOperator(sobelOperator);
     bmp1.writeToFile("./resources/P4/sobel.bmp");
-    // log
+    /* log
+        0 0  -1  0 0
+        0 -1 -2 -1 0
+        0 -2 16 -2 0
+        0 -1 -2 -1 0
+        0 0  -1  0 0
+    */
     auto logOperator = [&threshold](auto getDataValue, int x, int y)->int {
         int ans = 0;
         for (int i = -2;i <= 2;i++) {
@@ -359,8 +386,19 @@ void homework4() {
     bmp2.operateThroughOperator(logOperator);
     bmp2.writeToFile("./resources/P4/log.bmp");
 }
+void homework5() {
 
-int main() {
+
+
+}
+
+
+
+
+
+
+
+signed main() {
     // homework1();
     // homework2();
     // homework3();
