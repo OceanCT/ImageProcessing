@@ -189,17 +189,18 @@ public:
             }
         }
     }
-    void bmpDrawGreyHist(string filePath = "") {
-        auto hist = this->bmpCountGrayHist();
+    void bmpDrawGreyHist(string filePath,vector<int> hist,int line=0) {
         auto bmp = this->Copy();
         // count max of the hist
         int mx = 0;
         for (auto k : hist)mx = max(mx, k);
         // resize bmp
+        mx*=1.3;
         this->changeSize(256, 256);
         for (int i = 0;i < 256;i++) {
             for (int j = 0;j < 256;j++) {
-                data[i * realStride + j] = hist[255 - j] * 255 / mx < i ? 255 : 0;
+                if(j!=line) data[i * realStride + j] = hist[j] * 255 / mx < i ? 255 : 0;
+                else setDataValue(i,j,0);
             }
         }
         if (filePath != "") this->writeToFile(filePath);
@@ -213,6 +214,8 @@ public:
         return data[x * realStride + y];
     }
     void setDataValue(int x, int y, uint8_t val) {
+        if (x >= infoHeader.imageHeight || y >= infoHeader.imageWidth) return;
+        if (x < 0 || y < 0) return;
         data[x * realStride + y] = val;
     }
     static FilterTemplate generateFilterTemplate(int x, int y, vector<int> val, int deno) {
@@ -273,16 +276,131 @@ public:
             }
         }
     }
-    void bmpChangeSize(double fx, double fy) {
-
+    int interpolationOnce(int x, int y, int x1, int x2, int y1, int y2) {
+        int ans = (double)((x2 - x) * (y2 - y) * (int)getDataValue(x1, y1) + (x - x1) * (y2 - y) * (int)getDataValue(x2, y1)
+            + (x2 - x) * (y - y1) * (int)getDataValue(x1, y2) + (x - x1) * (y - y1) * (int)getDataValue(x2, y2)) / (x2 - x1) / (y2 - y1);
+        ans = ans > 255 ? 255 : ans;
+        ans = ans < 0 ? 0 : ans;
+        return ans;
     }
-    void bmpTranslation(int dx, int dy) {
-        BMP bmp = this->Copy();
-        auto getDataValue = [&bmp](int x, int y)->uint8_t {
-            if (x<0 || x>bmp.infoHeader.imageHeight || y<0 || y>bmp.infoHeader.imageWidth) return 0;
-            else return bmp.getDataValue(x, y);
+    void interpolation(vector<vector<bool> > vis, function<void(int, int, int&, int&, int&, int&)> fGet) {
+        auto fn = [&](int x, int y) {
+            int x1, x2, y1, y2;
+            fGet(x, y, x1, y1, x2, y2);
+            return interpolationOnce(x, y, x1, y1, x2, y2);
         };
-        auto translationOperator = [&getDataValue]()->int {};
+        for (int i = 0;i < infoHeader.imageHeight;i++) {
+            for (int j = 0;j < infoHeader.imageWidth;j++) {
+                if (vis[i][j]) continue;
+                setDataValue(i, j, fn(i, j));
+            }
+        }
+    }
+    void bmpChangeSize(double fx, double fy) {
+        BMP bmp = this->Copy();
+        int h1 = infoHeader.imageHeight, w1 = infoHeader.imageWidth;
+        changeSize(h1 * fx, w1 * fy);
+        for (auto i = data.begin();i != data.end();i++) {
+            *i = 0;
+        }
+        vector<vector<bool> > vis(infoHeader.imageHeight, vector<bool>(infoHeader.imageWidth));
+        for (int i = 0;i < h1;i++) {
+            for (int j = 0;j < w1;j++) {
+                setDataValue(i * fx, j * fy, bmp.getDataValue(i, j));
+                vis[i * fx][j * fy] = true;
+            }
+        }
+        auto FGet = [&fx, &fy](int i, int j, int& x1, int& y1, int& x2, int& y2) {
+            x1 = ((int)(i / fx)) * fx;
+            x2 = ((int)(i / fx) - 1) * fx;
+            if (x2 < 0) x2 = ((int)(i / fx) + 1) * fx;
+            y1 = ((int)(j / fy)) * fy;
+            y2 = ((int)(j / fy) - 1) * fy;
+            if (y2 < 0) y2 = ((int)(j / fy) + 1) * fy;
+            if (x1 > x2) swap(x1, x2);
+            if (y1 > y2) swap(y1, y2);
+        };
+        interpolation(vis, FGet);
+    }
+    void bmpMove(int fx, int fy) {
+        BMP bmp = this->Copy();
+        for (int i = 0;i < data.size();i++) data[i] = 0;
+        for (int i = 0;i < infoHeader.imageHeight;i++) {
+            for (int j = 0;j < infoHeader.imageWidth;j++) {
+                setDataValue(i + fx, j + fy, bmp.getDataValue(i, j));
+            }
+        }
+    }
+    void bmpMirror() {
+        BMP bmp = this->Copy();
+        for (int i = 0;i < infoHeader.imageHeight;i++) {
+            for (int j = 0;j < infoHeader.imageWidth;j++) {
+                setDataValue(i, j, bmp.getDataValue(infoHeader.imageHeight - i - 1, j));
+            }
+        }
+    }
+    void bmpRotate(int x0, int y0, double alpha) {
+        alpha *= M_PI / 360;
+        auto bmp = this->Copy();
+        for (int i = 0;i < data.size();i++) data[i] = 0;
+        vector<vector<bool>> vis(infoHeader.imageHeight, vector<bool>(infoHeader.imageWidth));
+        auto fn = [&x0, &y0, &alpha](int x, int y)->pair<int, int> {
+            int x1 = x - x0, y1 = y - y0;
+            int x2 = x1 * cos(alpha) - y1 * sin(alpha);
+            int y2 = x1 * sin(alpha) + y1 * cos(alpha);
+            return { x2 + x0,y2 + y0 };
+        };
+        for (int i = 0;i < infoHeader.imageHeight;i++) {
+            for (int j = 0;j < infoHeader.imageWidth;j++) {
+                auto [x, y] = fn(i, j);
+                if (x < 0 || x >= infoHeader.imageHeight || y < 0 || y >= infoHeader.imageWidth) continue;
+                setDataValue(x, y, bmp.getDataValue(i, j));
+                vis[x][y] = 1;
+            }
+        }
+        for (int i = 0;i < infoHeader.imageHeight;i++) {
+            for (int j = 0;j < infoHeader.imageWidth;j++) {
+                if (vis[i][j]) continue;
+                int left = i - 1, right = i + 1;
+                while (left >= 0 && !vis[left][j]) left--;
+                if (left < 0) continue;
+                while (right < infoHeader.imageWidth && !vis[right][j]) right++;
+                if (right >= infoHeader.imageWidth) continue;
+                setDataValue(i, j, (double)(right - i) / (right - left) * getDataValue(right, j)
+                    + (double)(i - left) / (right - left) * getDataValue(left, j));
+            }
+        }
+    }
+    void bmpThreholdCut(string filePath="") {
+        auto vec = bmpCountGrayHist();
+        int ans = 0, pos = 0;
+        int st=0,en=255;
+        while(!vec[st]) st++;
+        while(!vec[en]) en--;   
+        for (int i = st;i <en;i++) {
+            double tmp1 = 0, tmp2 = 0;
+            double ans1 = 0, ans2 = 0;
+            for (int j = 0;j <= i;j++) {
+                tmp1 += vec[j], ans1 += j * vec[j];
+            }
+            ans1 /= tmp1;
+            for (int j = i + 1;j <= 255;j++) {
+                tmp2 += vec[j], ans2 += j * vec[j];
+            }
+            ans2 /= tmp2;
+            double p1 = tmp1/(tmp1+tmp2),p2 = tmp2/(tmp1+tmp2);
+            double ans0 = p1*p2*(ans1-ans2)*(ans1-ans2);
+            if (ans0 > ans) { pos = i, ans = ans0; }
+        }
+        cerr<<pos<<endl;
+        // pos=120;
+        for (int i = 0;i < infoHeader.imageHeight;i++) {
+            for (int j = 0;j < infoHeader.imageWidth;j++) {
+                if(getDataValue(i,j)<=pos) setDataValue(i,j,0);
+                else setDataValue(i,j,255);
+            }
+        }
+        Copy().bmpDrawGreyHist(filePath,vec,pos);
     }
 };
 void homework1() {
@@ -308,10 +426,10 @@ void homework1() {
 }
 void homework2() {
     BMP bmp("./resources/P2/dim.bmp");
-    bmp.bmpDrawGreyHist("./resources/P2/dim_hist.bmp");
+    bmp.bmpDrawGreyHist("./resources/P2/dim_hist.bmp",bmp.bmpCountGrayHist());
     bmp.bmpHistogramEqualizationProcessing();
     bmp.writeToFile("./resources/P2/dim1.bmp");
-    bmp.bmpDrawGreyHist("./resources/P2/dim1_hist.bmp");
+    bmp.bmpDrawGreyHist("./resources/P2/dim1_hist.bmp",bmp.bmpCountGrayHist());
 }
 void homework3() {
     BMP bmp("./resources/P3/lena.bmp");
@@ -387,11 +505,27 @@ void homework4() {
     bmp2.writeToFile("./resources/P4/log.bmp");
 }
 void homework5() {
-
-
-
+    BMP bmp("./resources/P5/lena.bmp");
+    bmp.bmpChangeSize(0.5, 0.5);
+    bmp.writeToFile("./resources/P5/size1.bmp");
+    BMP bmp1("./resources/P5/lena.bmp");
+    bmp1.bmpChangeSize(2, 2);
+    bmp1.writeToFile("./resources/P5/size2.bmp");
+    BMP bmp2("./resources/P5/lena.bmp");
+    bmp2.bmpMove(50, 50);
+    bmp2.writeToFile("./resources/P5/move.bmp");
+    BMP bmp3("./resources/P5/lena.bmp");
+    bmp3.bmpMirror();
+    bmp3.writeToFile("./resources/P5/mirror.bmp");
+    BMP bmp4("./resources/P5/lena.bmp");
+    bmp4.bmpRotate(50, 50, 70);
+    bmp4.writeToFile("./resources/P5/rotate.bmp");
 }
-
+void homework6() {
+    BMP bmp("./resources/P6/lena.bmp");
+    bmp.bmpThreholdCut("./resources/P6/hist.bmp");
+    bmp.writeToFile("./resources/P6/threholdCut.bmp");
+}
 
 
 
@@ -402,6 +536,9 @@ signed main() {
     // homework1();
     // homework2();
     // homework3();
-    homework4();
+    // homework4();
+    // homework5();
+    // homework6();
+    
     return 0;
 }
