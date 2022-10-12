@@ -5,6 +5,8 @@
 #include<fstream>
 #include<vector>
 #include<string>
+#include<set>
+#include<queue>
 using namespace std;
 class BMP {
 #pragma pack(push, 2)
@@ -189,18 +191,18 @@ public:
             }
         }
     }
-    void bmpDrawGreyHist(string filePath,vector<int> hist,int line=0) {
+    void bmpDrawGreyHist(string filePath, vector<int> hist, int line = 0) {
         auto bmp = this->Copy();
         // count max of the hist
         int mx = 0;
         for (auto k : hist)mx = max(mx, k);
         // resize bmp
-        mx*=1.3;
+        mx *= 1.3;
         this->changeSize(256, 256);
         for (int i = 0;i < 256;i++) {
             for (int j = 0;j < 256;j++) {
-                if(j!=line) data[i * realStride + j] = hist[j] * 255 / mx < i ? 255 : 0;
-                else setDataValue(i,j,0);
+                if (j != line) data[i * realStride + j] = hist[j] * 255 / mx < i ? 255 : 0;
+                else setDataValue(i, j, 0);
             }
         }
         if (filePath != "") this->writeToFile(filePath);
@@ -371,13 +373,13 @@ public:
             }
         }
     }
-    void bmpThreholdCut(string filePath="") {
+    void bmpThreholdCut(string filePath = "") {
         auto vec = bmpCountGrayHist();
         int ans = 0, pos = 0;
-        int st=0,en=255;
-        while(!vec[st]) st++;
-        while(!vec[en]) en--;   
-        for (int i = st;i <en;i++) {
+        int st = 0, en = 255;
+        while (!vec[st]) st++;
+        while (!vec[en]) en--;
+        for (int i = st;i < en;i++) {
             double tmp1 = 0, tmp2 = 0;
             double ans1 = 0, ans2 = 0;
             for (int j = 0;j <= i;j++) {
@@ -388,19 +390,99 @@ public:
                 tmp2 += vec[j], ans2 += j * vec[j];
             }
             ans2 /= tmp2;
-            double p1 = tmp1/(tmp1+tmp2),p2 = tmp2/(tmp1+tmp2);
-            double ans0 = p1*p2*(ans1-ans2)*(ans1-ans2);
+            double p1 = tmp1 / (tmp1 + tmp2), p2 = tmp2 / (tmp1 + tmp2);
+            double ans0 = p1 * p2 * (ans1 - ans2) * (ans1 - ans2);
             if (ans0 > ans) { pos = i, ans = ans0; }
         }
-        cerr<<pos<<endl;
+        cerr << pos << endl;
         // pos=120;
         for (int i = 0;i < infoHeader.imageHeight;i++) {
             for (int j = 0;j < infoHeader.imageWidth;j++) {
-                if(getDataValue(i,j)<=pos) setDataValue(i,j,0);
-                else setDataValue(i,j,255);
+                if (getDataValue(i, j) <= pos) setDataValue(i, j, 0);
+                else setDataValue(i, j, 255);
             }
         }
-        Copy().bmpDrawGreyHist(filePath,vec,pos);
+        Copy().bmpDrawGreyHist(filePath, vec, pos);
+    }
+    void bmpSeedGrow() {
+        BMP bmp = this->Copy();
+        typedef struct Node {
+            int x, y;const bool operator<(Node other)const {
+                if(y==other.y) return x<other.x;
+                else return y<other.y;
+            }
+        }node;
+        for(int i=0;i<data.size();i++) data[i] = 0;
+        int dx[] = {0,0,1,-1};
+        int dy[] = {1,-1,0,0};
+        queue<node> q;
+        set<node> vis;
+        for(int x=0;x<infoHeader.imageHeight;x++) {
+            for(int y=0;y<infoHeader.imageWidth;y++) {
+                if(bmp.getDataValue(x,y)>230) {q.push({x,y}),vis.insert({x,y});}
+            }
+        }
+        while(!q.empty()) {
+            node now = q.front();
+            setDataValue(now.x,now.y,255);
+            q.pop();
+            for(int i=0;i<4;i++) {
+                int x1 = now.x+dx[i];
+                int y1 = now.y+dy[i];
+                if(x1<0||x1>=infoHeader.imageHeight||y1<0||y1>=infoHeader.imageWidth) continue;
+                if(vis.count({x1,y1})) continue;
+                if(abs(bmp.getDataValue(x1,y1)-bmp.getDataValue(now.x,now.y))<=11) {
+                    q.push({x1,y1});
+                    vis.insert({x1,y1});
+                }
+            }
+        }
+    }
+    void bmpSeparate() {
+        auto fn = [&](int x1,int y1,int x2,int y2) {
+            int minv = getDataValue(x1,y1);
+            int maxv = getDataValue(x1,y1);
+            auto chmin = [](auto x,auto y){return x>y?y:x;};
+            auto chmax = [](auto x,auto y){return x>y?x:y;};
+            for(int i=x1;i<infoHeader.imageHeight;i++) {
+                for(int j=y1;j<infoHeader.imageWidth;j++) {
+                    minv = chmin(minv,getDataValue(i,j));
+                    maxv = chmax(maxv,getDataValue(i,j));
+                }
+            }
+            return maxv-minv<=25;
+        };
+        int x1 = 0,y1 = 0,x2 = infoHeader.imageHeight-1,y2 = infoHeader.imageWidth-1;
+        typedef struct Node {
+            int x1, y1,x2,y2;const bool operator<(Node other)const {
+                if(x1!=other.x1) return x1<other.x1;
+                if(y1!=other.y1) return y1<other.y1;
+                if(x2!=other.x2) return x2<other.x2;
+                if(y2!=other.y2) return y2<other.y2;
+            }
+        }node;
+        queue<node> q;
+        q.push({x1,y1,x2,y2});
+        vector<node> vis;
+        set<node> test;
+        while(!q.empty()){
+            vis.push_back(q.front());
+            auto [x1,y1,x2,y2] = q.front();
+            // cout<<x1<<" "<<y1<<" "<<x2<<" "<<y2<<endl;
+            q.pop();
+            if(!fn(x1,y1,x2,y2)) {
+                int x3 = (x1+x2)/2;
+                int y3 = (y1+y2)/2;
+                q.push({x1,y1,x3,y3});
+                q.push({x3+1,y1,x2,y3});
+                q.push({x1,y3+1,x3,y2});
+                q.push({x3+1,y3+1,x2,y2});
+            }
+        }   
+        for(auto &[x1,y1,x2,y2]:vis) {
+            for(int i=x1;i<=x2;i++) setDataValue(i,y1,0),setDataValue(i,y2,0);
+            for(int i=y1;i<=y2;i++) setDataValue(x1,i,0),setDataValue(x2,i,0);
+        }
     }
 };
 void homework1() {
@@ -426,10 +508,10 @@ void homework1() {
 }
 void homework2() {
     BMP bmp("./resources/P2/dim.bmp");
-    bmp.bmpDrawGreyHist("./resources/P2/dim_hist.bmp",bmp.bmpCountGrayHist());
+    bmp.bmpDrawGreyHist("./resources/P2/dim_hist.bmp", bmp.bmpCountGrayHist());
     bmp.bmpHistogramEqualizationProcessing();
     bmp.writeToFile("./resources/P2/dim1.bmp");
-    bmp.bmpDrawGreyHist("./resources/P2/dim1_hist.bmp",bmp.bmpCountGrayHist());
+    bmp.bmpDrawGreyHist("./resources/P2/dim1_hist.bmp", bmp.bmpCountGrayHist());
 }
 void homework3() {
     BMP bmp("./resources/P3/lena.bmp");
@@ -526,9 +608,17 @@ void homework6() {
     bmp.bmpThreholdCut("./resources/P6/hist.bmp");
     bmp.writeToFile("./resources/P6/threholdCut.bmp");
 }
+void homework7() {
+    // BMP bmp("./resources/P7/source.bmp");
+    // bmp.bmpConverter24To8();
+    // bmp.bmpSeedGrow();
+    // bmp.writeToFile("./resources/P7/grow.bmp");
+    BMP bmp1("./resources/P7/source.bmp");
+    bmp1.bmpConverter24To8();
+    bmp1.bmpSeparate();
+    bmp1.writeToFile("./resources/P7/seprate.bmp");
 
-
-
+}
 
 
 
@@ -539,6 +629,7 @@ signed main() {
     // homework4();
     // homework5();
     // homework6();
-    
+    homework7();
     return 0;
 }
+
