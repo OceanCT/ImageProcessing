@@ -35,3 +35,18 @@ bmp.setDataValue(x,y,value);
 ```
 BMP bmpCopy = bmp.Copy();
 ```
+
+7. 遍历
+
+```
+for(int i=0;i<infoHeader.imageHeight;i++) {
+    for(int j=0;j<infoHeader.imageWidth;j++) {
+
+    }
+}
+```
+
+8. 写出WriteToFile
+```
+bmp.writeToFile("result.bmp");
+```
